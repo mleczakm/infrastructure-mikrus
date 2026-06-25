@@ -26,26 +26,17 @@
     # -------------------------
     # Bootstrap: Docker on Alpine
     # -------------------------
-    - name: Install Docker + Python on Alpine
+    - name: Install Docker + Python deps on Alpine
       become: true
       community.general.apk:
         name:
           - docker
           - python3
-          - py3-pip
           - py3-requests
+          - py3-docker-py
           - docker-cli-compose
         state: present
         update_cache: true
-      tags: [bootstrap]
-
-    - name: Install Docker SDK for Python (pip, break system packages)
-      become: true
-      ansible.builtin.pip:
-        name: docker
-        state: present
-        executable: pip3
-        break_system_packages: true
       tags: [bootstrap]
 
     - name: Ensure Docker service is started and enabled

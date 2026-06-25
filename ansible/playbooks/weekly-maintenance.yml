@@ -350,15 +350,8 @@
       community.general.apk:
         name:
           - py3-requests
+          - py3-docker-py
         state: present
-      tags: [docker, cleanup, maintenance, health, containers]
-
-    - name: Ensure Docker SDK for Python is installed
-      ansible.builtin.pip:
-        name: docker
-        state: present
-        executable: pip3
-        break_system_packages: true
       tags: [docker, cleanup, maintenance, health, containers]
 
     - name: Prune Docker system (aggressive cleanup)

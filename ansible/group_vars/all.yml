@@ -6,8 +6,8 @@ docker_users: ["root"]
 alpine_packages:
   - docker
   - python3
-  - py3-pip
   - py3-requests
+  - py3-docker-py
   - openssh-client
 
 # Network configuration
