@@ -163,12 +163,33 @@
 
     - name: Fix PAM configuration after Alpine upgrade
       block:
+        - name: Ensure linux-pam is installed
+          community.general.apk:
+            name: linux-pam
+            state: present
+          when: ansible_os_family == "Alpine"
+
+        - name: Ensure PAM configuration directory exists
+          ansible.builtin.file:
+            path: /etc/pam.d
+            state: directory
+            mode: "0755"
+          when: ansible_os_family == "Alpine"
+
+        - name: Check PAM configuration directory
+          ansible.builtin.stat:
+            path: /etc/pam.d
+          register: pam_d_dir
+          when: ansible_os_family == "Alpine"
+
         - name: Backup PAM configuration
           ansible.builtin.archive:
             path: /etc/pam.d
             dest: "/etc/pam.d.backup.{{ ansible_date_time.epoch }}.tar.gz"
             format: gz
-          when: ansible_os_family == "Alpine"
+          when:
+            - ansible_os_family == "Alpine"
+            - pam_d_dir.stat.isdir | default(false)
 
         - name: Create PAM sshd configuration
           ansible.builtin.copy:
@@ -221,11 +242,22 @@
             mode: '0644'
           when: ansible_os_family == "Alpine"
 
-        - name: Set correct permissions for PAM files
+        - name: Set correct permissions for PAM directory
           ansible.builtin.file:
             path: /etc/pam.d
-            mode: '0644'
-            recurse: true
+            mode: "0755"
+          when: ansible_os_family == "Alpine"
+
+        - name: Set correct permissions for PAM files
+          ansible.builtin.file:
+            path: "{{ item }}"
+            mode: "0644"
+          loop:
+            - /etc/pam.d/sshd
+            - /etc/pam.d/base-auth
+            - /etc/pam.d/base-account
+            - /etc/pam.d/base-password
+            - /etc/pam.d/base-session
           when: ansible_os_family == "Alpine"
 
         - name: Verify SSH configuration syntax
