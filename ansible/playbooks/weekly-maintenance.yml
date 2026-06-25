@@ -346,6 +346,21 @@
     # -------------------------
     # Docker Cleanup
     # -------------------------
+    - name: Ensure Python deps for Ansible Docker modules
+      community.general.apk:
+        name:
+          - py3-requests
+        state: present
+      tags: [docker, cleanup, maintenance, health, containers]
+
+    - name: Ensure Docker SDK for Python is installed
+      ansible.builtin.pip:
+        name: docker
+        state: present
+        executable: pip3
+        break_system_packages: true
+      tags: [docker, cleanup, maintenance, health, containers]
+
     - name: Prune Docker system (aggressive cleanup)
       community.docker.docker_prune:
         containers: true

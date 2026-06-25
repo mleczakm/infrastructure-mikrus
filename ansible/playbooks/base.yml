@@ -33,6 +33,7 @@
           - docker
           - python3
           - py3-pip
+          - py3-requests
           - docker-cli-compose
         state: present
         update_cache: true
