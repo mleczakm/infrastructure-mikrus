@@ -15,7 +15,7 @@
     - name: Create maintenance log entry
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Starting weekly maintenance"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Starting weekly maintenance"
         create: yes
         state: present
       tags: [maintenance]
@@ -62,7 +62,7 @@
     - name: Log Alpine version status
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Alpine version check: {{ current_version }} (latest stable: {{ latest_stable_version }}) {{ alpine_upgrade_needed | ternary('UPGRADE NEEDED', 'UP TO DATE') }}"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Alpine version check: {{ current_version }} (latest stable: {{ latest_stable_version }}) {{ alpine_upgrade_needed | ternary('UPGRADE NEEDED', 'UP TO DATE') }}"
       tags: [maintenance, system, version]
 
     - name: Display Alpine version information
@@ -89,14 +89,14 @@
 
     - name: Create backup directory for Alpine upgrade
       ansible.builtin.file:
-        path: "/var/backups/alpine-upgrade-{{ ansible_date_time.iso8601 }}"
+        path: "/var/backups/alpine-upgrade-{{ ansible_facts['date_time']['iso8601'] }}"
         state: directory
         mode: '0755'
       when: alpine_upgrade_needed and auto_upgrade_alpine
       tags: [system, version, upgrade]
 
     - name: Backup package list before Alpine upgrade
-      ansible.builtin.shell: apk info | sort > /var/backups/alpine-upgrade-{{ ansible_date_time.iso8601 }}/packages-before.txt
+      ansible.builtin.shell: apk info | sort > /var/backups/alpine-upgrade-{{ ansible_facts['date_time']['iso8601'] }}/packages-before.txt
       when: alpine_upgrade_needed and auto_upgrade_alpine
       tags: [system, version, upgrade]
 
@@ -120,7 +120,6 @@
 
     - name: Update package index with new repositories
       community.general.apk:
-        update_cache: true
       when: alpine_upgrade_needed and auto_upgrade_alpine
       register: apk_update
       tags: [system, version, upgrade]
@@ -130,6 +129,7 @@
         name:
           - apk-tools
         state: latest
+        update_cache: true
       when: alpine_upgrade_needed and auto_upgrade_alpine
       register: apk_tools_upgrade
       tags: [system, version, upgrade]
@@ -144,7 +144,7 @@
     - name: Log Alpine upgrade results
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Alpine OS upgrade performed: {{ alpine_system_upgrade.changed | ternary('SUCCESS', 'NO CHANGES') }}"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Alpine OS upgrade performed: {{ alpine_system_upgrade.changed | ternary('SUCCESS', 'NO CHANGES') }}"
       when: alpine_upgrade_needed and auto_upgrade_alpine
       tags: [maintenance, system, version]
 
@@ -166,29 +166,30 @@
         - name: Ensure linux-pam is installed
           community.general.apk:
             name: linux-pam
-            state: present
-          when: ansible_os_family == "Alpine"
+            state: latest
+        update_cache: true
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Ensure PAM configuration directory exists
           ansible.builtin.file:
             path: /etc/pam.d
             state: directory
             mode: "0755"
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Check PAM configuration directory
           ansible.builtin.stat:
             path: /etc/pam.d
           register: pam_d_dir
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Backup PAM configuration
           ansible.builtin.archive:
             path: /etc/pam.d
-            dest: "/etc/pam.d.backup.{{ ansible_date_time.epoch }}.tar.gz"
+            dest: "/etc/pam.d.backup.{{ ansible_facts['date_time']['epoch'] }}.tar.gz"
             format: gz
           when:
-            - ansible_os_family == "Alpine"
+            - ansible_facts['os_family'] == "Alpine"
             - pam_d_dir.stat.isdir | default(false)
 
         - name: Create PAM sshd configuration
@@ -201,7 +202,7 @@
               password   required     pam_unix.so
               session    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-auth configuration
           ansible.builtin.copy:
@@ -213,7 +214,7 @@
               password   required     pam_unix.so
               session    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-account configuration
           ansible.builtin.copy:
@@ -222,7 +223,7 @@
               #%PAM-1.0
               account    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-password configuration
           ansible.builtin.copy:
@@ -231,7 +232,7 @@
               #%PAM-1.0
               password   required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-session configuration
           ansible.builtin.copy:
@@ -240,13 +241,13 @@
               #%PAM-1.0
               session    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Set correct permissions for PAM directory
           ansible.builtin.file:
             path: /etc/pam.d
             mode: "0755"
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Set correct permissions for PAM files
           ansible.builtin.file:
@@ -258,7 +259,7 @@
             - /etc/pam.d/base-account
             - /etc/pam.d/base-password
             - /etc/pam.d/base-session
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Verify SSH configuration syntax
           ansible.builtin.command: sshd -t
@@ -269,8 +270,8 @@
         - name: Log PAM fix completion
           ansible.builtin.lineinfile:
             path: "{{ maintenance_log }}"
-            line: "{{ ansible_date_time.iso8601 }} - PAM configuration fixed after Alpine upgrade"
-          when: ansible_os_family == "Alpine"
+            line: "{{ ansible_facts['date_time']['iso8601'] }} - PAM configuration fixed after Alpine upgrade"
+          when: ansible_facts['os_family'] == "Alpine"
 
       when: alpine_upgrade_needed and auto_upgrade_alpine and (alpine_system_upgrade.changed or apk_tools_upgrade.changed)
       tags: [system, version, upgrade, pam]
@@ -318,7 +319,7 @@
     - name: Alert about available Alpine upgrade
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - ALERT: Alpine OS upgrade available ({{ current_version }} -> {{ latest_stable_version }}). Run with -e 'auto_upgrade_alpine=true' to upgrade."
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - ALERT: Alpine OS upgrade available ({{ current_version }} -> {{ latest_stable_version }}). Run with -e 'auto_upgrade_alpine=true' to upgrade."
       when: alpine_upgrade_needed and not auto_upgrade_alpine
       tags: [maintenance, system, alert]
 
@@ -327,7 +328,6 @@
     # -------------------------
     - name: Update Alpine package index
       community.general.apk:
-        update_cache: true
       register: apk_update
       tags: [system, update]
 
@@ -340,7 +340,7 @@
     - name: Log system update results
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - System update: {{ apk_upgrade.changed | ternary('Packages upgraded', 'No updates available') }}"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - System update: {{ apk_upgrade.changed | ternary('Packages upgraded', 'No updates available') }}"
       tags: [maintenance, system]
 
     # -------------------------
@@ -350,8 +350,9 @@
       community.general.apk:
         name:
           - py3-requests
-          - py3-docker-py
-        state: present
+          - py3-docker
+        state: latest
+        update_cache: true
       tags: [docker, cleanup, maintenance, health, containers]
 
     - name: Prune Docker system (aggressive cleanup)
@@ -367,7 +368,7 @@
     - name: Log Docker cleanup results
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Docker cleanup: {{ docker_prune.changed | ternary('Cleaned up unused resources', 'No cleanup needed') }}"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Docker cleanup: {{ docker_prune.changed | ternary('Cleaned up unused resources', 'No cleanup needed') }}"
       tags: [maintenance, docker]
 
     # -------------------------
@@ -398,7 +399,7 @@
     - name: Log file truncation results
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Log cleanup: {{ truncated_logs.results | selectattr('changed') | list | length }} files truncated"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Log cleanup: {{ truncated_logs.results | selectattr('changed') | list | length }} files truncated"
       tags: [maintenance, logs]
 
     # -------------------------
@@ -424,7 +425,7 @@
     - name: Report container status
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Container {{ item.item }}: {{ item.container.State.Status | default('not found') }}"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Container {{ item.item }}: {{ item.container.State.Status | default('not found') }}"
       loop: "{{ container_status.results }}"
       loop_control:
         label: "{{ item.item }}"
@@ -442,13 +443,13 @@
     - name: Log disk usage
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Disk usage: {{ disk_usage.stdout }}%"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Disk usage: {{ disk_usage.stdout }}%"
       tags: [maintenance, disk]
 
     - name: Alert on high disk usage (>80%)
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - WARNING: High disk usage detected ({{ disk_usage.stdout }}%)"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - WARNING: High disk usage detected ({{ disk_usage.stdout }}%)"
       when: disk_usage.stdout | int > 80
       tags: [maintenance, disk, alert]
 
@@ -464,14 +465,14 @@
     - name: Backup and truncate maintenance log
       ansible.builtin.copy:
         src: "{{ maintenance_log }}"
-        dest: "{{ maintenance_log }}.{{ ansible_date_time.epoch }}"
+        dest: "{{ maintenance_log }}.{{ ansible_facts['date_time']['epoch'] }}"
         remote_src: yes
       when: maintenance_log_stat.stat.exists and maintenance_log_stat.stat.size > 10485760  # 10MB
       tags: [logs, maintenance]
 
     - name: Truncate maintenance log
       ansible.builtin.copy:
-        content: "{{ ansible_date_time.iso8601 }} - Log rotated due to size\n"
+        content: "{{ ansible_facts['date_time']['iso8601'] }} - Log rotated due to size\n"
         dest: "{{ maintenance_log }}"
       when: maintenance_log_stat.stat.exists and maintenance_log_stat.stat.size > 10485760
       tags: [logs, maintenance]
@@ -500,7 +501,7 @@
     - name: Create maintenance summary
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Weekly maintenance completed successfully"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Weekly maintenance completed successfully"
       tags: [maintenance]
 
     - name: Display maintenance summary

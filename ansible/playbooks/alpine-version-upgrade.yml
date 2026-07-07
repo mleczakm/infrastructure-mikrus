@@ -7,7 +7,7 @@
   vars:
     target_alpine_version: "3.23"
     backup_before_upgrade: true
-    backup_dir: "/var/backups/alpine-upgrade-{{ ansible_date_time.iso8601 }}"
+    backup_dir: "/var/backups/alpine-upgrade-{{ ansible_facts['date_time']['iso8601'] }}"
     maintenance_log: "/var/log/mikrus-maintenance.log"
 
   pre_tasks:
@@ -70,7 +70,7 @@
     - name: Log upgrade start
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Starting Alpine OS upgrade from {{ current_version }} to {{ target_alpine_version }}"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Starting Alpine OS upgrade from {{ current_version }} to {{ target_alpine_version }}"
         create: yes
 
   tasks:
@@ -126,7 +126,7 @@
     - name: Log upgrade results
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Alpine OS upgrade: {{ current_version }} -> {{ new_version }} {{ (new_version == target_alpine_version) | ternary('SUCCESS', 'PARTIAL') }}"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Alpine OS upgrade: {{ current_version }} -> {{ new_version }} {{ (new_version == target_alpine_version) | ternary('SUCCESS', 'PARTIAL') }}"
 
     - name: Display upgrade results
       ansible.builtin.debug:
@@ -165,28 +165,28 @@
           community.general.apk:
             name: linux-pam
             state: present
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Ensure PAM configuration directory exists
           ansible.builtin.file:
             path: /etc/pam.d
             state: directory
             mode: "0755"
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Check PAM configuration directory
           ansible.builtin.stat:
             path: /etc/pam.d
           register: pam_d_dir
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Backup PAM configuration
           ansible.builtin.archive:
             path: /etc/pam.d
-            dest: "/etc/pam.d.backup.{{ ansible_date_time.epoch }}.tar.gz"
+            dest: "/etc/pam.d.backup.{{ ansible_facts['date_time']['epoch'] }}.tar.gz"
             format: gz
           when:
-            - ansible_os_family == "Alpine"
+            - ansible_facts['os_family'] == "Alpine"
             - pam_d_dir.stat.isdir | default(false)
 
         - name: Create PAM sshd configuration
@@ -199,7 +199,7 @@
               password   required     pam_unix.so
               session    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-auth configuration
           ansible.builtin.copy:
@@ -211,7 +211,7 @@
               password   required     pam_unix.so
               session    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-account configuration
           ansible.builtin.copy:
@@ -220,7 +220,7 @@
               #%PAM-1.0
               account    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-password configuration
           ansible.builtin.copy:
@@ -229,7 +229,7 @@
               #%PAM-1.0
               password   required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Create PAM base-session configuration
           ansible.builtin.copy:
@@ -238,13 +238,13 @@
               #%PAM-1.0
               session    required     pam_unix.so
             mode: '0644'
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Set correct permissions for PAM directory
           ansible.builtin.file:
             path: /etc/pam.d
             mode: "0755"
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Set correct permissions for PAM files
           ansible.builtin.file:
@@ -256,7 +256,7 @@
             - /etc/pam.d/base-account
             - /etc/pam.d/base-password
             - /etc/pam.d/base-session
-          when: ansible_os_family == "Alpine"
+          when: ansible_facts['os_family'] == "Alpine"
 
         - name: Verify SSH configuration syntax
           ansible.builtin.command: sshd -t
@@ -267,8 +267,8 @@
         - name: Log PAM fix completion
           ansible.builtin.lineinfile:
             path: "{{ maintenance_log }}"
-            line: "{{ ansible_date_time.iso8601 }} - PAM configuration fixed after Alpine upgrade"
-          when: ansible_os_family == "Alpine"
+            line: "{{ ansible_facts['date_time']['iso8601'] }} - PAM configuration fixed after Alpine upgrade"
+          when: ansible_facts['os_family'] == "Alpine"
 
       when: reboot_needed.stdout == "yes" or system_upgrade.changed
       tags: [pam]
@@ -326,7 +326,7 @@
         content: |
           Alpine OS Upgrade Summary
           =========================
-          Date: {{ ansible_date_time.iso8601 }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
           From version: {{ current_version }}
           To version: {{ new_version }}
           Target version: {{ target_alpine_version }}
@@ -340,7 +340,7 @@
     - name: Log upgrade completion
       ansible.builtin.lineinfile:
         path: "{{ maintenance_log }}"
-        line: "{{ ansible_date_time.iso8601 }} - Alpine OS upgrade completed successfully ({{ backup_dir }})"
+        line: "{{ ansible_facts['date_time']['iso8601'] }} - Alpine OS upgrade completed successfully ({{ backup_dir }})"
 
     - name: Final verification
       ansible.builtin.assert:
