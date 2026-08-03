@@ -167,7 +167,7 @@
           community.general.apk:
             name: linux-pam
             state: latest
-        update_cache: true
+            update_cache: true
           when: ansible_facts['os_family'] == "Alpine"
 
         - name: Ensure PAM configuration directory exists
