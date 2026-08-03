@@ -352,7 +352,7 @@
       community.general.apk:
         name:
           - py3-requests
-          - py3-docker
+          - py3-docker-py
         state: latest
         update_cache: true
       tags: [docker, cleanup, maintenance, health, containers]
