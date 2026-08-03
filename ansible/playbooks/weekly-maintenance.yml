@@ -120,6 +120,7 @@
 
     - name: Update package index with new repositories
       community.general.apk:
+        update_cache: true
       when: alpine_upgrade_needed and auto_upgrade_alpine
       register: apk_update
       tags: [system, version, upgrade]
@@ -328,6 +329,7 @@
     # -------------------------
     - name: Update Alpine package index
       community.general.apk:
+        update_cache: true
       register: apk_update
       tags: [system, update]
 
