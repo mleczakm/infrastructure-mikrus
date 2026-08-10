@@ -22,3 +22,11 @@ beszel_agent_image: "henrygd/beszel-agent"
 beszel_agent_name: "beszel-agent"
 beszel_agent_volume: "beszel_agent_data"
 beszel_agent_listen: "45876"
+
+# n8n
+n8n_name: n8n
+n8n_domain: n8n.mleczki.pl
+n8n_image: docker.n8n.io/n8nio/n8n:stable
+n8n_port: 8082
+n8n_data_dir: /var/lib/n8n
+n8n_backup_dir: /var/lib/n8n-backups

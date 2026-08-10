@@ -23,7 +23,7 @@ on:
 
 jobs:
   weekly-maintenance:
-    environment: stage
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -57,7 +57,7 @@ jobs:
       - name: Run weekly maintenance with Ansible
         run: |
           # Set tags based on workflow inputs
-          TAGS="maintenance"
+          TAGS="maintenance,n8n"
           EXTRA_VARS=""
           
           if [ "${{ github.event.inputs.skip_updates }}" = "true" ]; then
@@ -86,6 +86,8 @@ jobs:
             -e "ansible_host=${{ secrets.MIKRUS_HOST }}" \
             -e "ansible_port=${{ secrets.MIKRUS_PORT }}" \
             -e "ansible_user=root" \
+            -e "mikrus_ipv6=${{ secrets.MIKRUS_IPV6 }}" \
+            -e "n8n_encryption_key=${{ secrets.N8N_ENCRYPTION_KEY }}" \
             $EXTRA_VARS \
             --tags "$TAGS" \
             -v
