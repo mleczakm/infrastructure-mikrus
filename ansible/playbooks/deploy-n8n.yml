@@ -3,6 +3,8 @@
   hosts: mikrus
   gather_facts: false
   vars:
+    deploy_dir: /opt/apps
+    network_name: mikrus
     n8n_data_dir: /root/.n8n
 
   tasks:
