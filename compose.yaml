@@ -87,10 +87,14 @@ services:
     networks:
       mikrus:
     environment:
-      WEBHOOK_URL: https://n8n.mleczko.dev
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY must be set}
+      N8N_HOST: n8n.mleczki.pl
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://n8n.mleczki.pl/
     labels:
       - traefik.enable=true
-      - traefik.http.routers.n8n.rule=Host(`n8n.mleczko.dev`)
+      - traefik.http.routers.n8n.rule=Host(`n8n.mleczki.pl`)
       - traefik.http.routers.n8n.entrypoints=websecure
       - traefik.http.routers.n8n.priority=200
       - traefik.http.routers.n8n.tls=true
