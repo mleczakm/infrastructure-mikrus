@@ -52,7 +52,24 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.MIKRUS_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p "${{ secrets.MIKRUS_PORT }}" "${{ secrets.MIKRUS_HOST }}" >> ~/.ssh/known_hosts
+
+          # Mikrus occasionally refuses SSH connections for a minute or two
+          # around the scheduled run time (observed on 2026-07-13, 07-20,
+          # 07-27, 08-03, 08-10 runs); retry the host-key fetch before
+          # giving up so a transient blip doesn't fail the whole run.
+          for attempt in $(seq 1 5); do
+            if ssh-keyscan -p "${{ secrets.MIKRUS_PORT }}" -T 10 "${{ secrets.MIKRUS_HOST }}" > /tmp/host_key 2>/tmp/keyscan_err && [ -s /tmp/host_key ]; then
+              cat /tmp/host_key >> ~/.ssh/known_hosts
+              echo "Host key retrieved on attempt $attempt"
+              break
+            fi
+            echo "Attempt $attempt/5 failed: $(cat /tmp/keyscan_err)"
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::Could not reach Mikrus host after 5 attempts"
+              exit 1
+            fi
+            sleep 30
+          done
 
       - name: Run weekly maintenance with Ansible
         run: |
@@ -171,6 +188,46 @@ jobs:
               });
               core.info(`Created issue: #${issue.number}`);
             }
+
+      - name: Close alert issue on success
+        if: success()
+        uses: actions/github-script@v7
+        env:
+          MIKRUS_HOST: ${{ secrets.MIKRUS_HOST }}
+        with:
+          script: |
+            const server = process.env.MIKRUS_HOST || 'unknown';
+            const title = `ALERT: Weekly maintenance failed on Mikrus (${server})`;
+            const label = 'infra-alert';
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            });
+
+            const existing = issues.find(i => i.title === title);
+            if (!existing) {
+              core.info('No open alert issue to close.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body: `Konserwacja zakończona sukcesem.\n\nWorkflow run: ${context.payload.repository.html_url}/actions/runs/${context.runId}`,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+            core.info(`Closed issue #${existing.number}`);
 
       - name: Success notification
         if: success()
