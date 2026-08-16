@@ -128,7 +128,9 @@ jobs:
             const label = 'infra-alert';
             const now = new Date().toISOString();
 
-            // Find existing open issue with label and same title
+            // Match by label alone (not title) — the host in the title
+            // can change if the server moves, so an exact-title match
+            // would miss an older open issue and create a duplicate.
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -137,7 +139,7 @@ jobs:
               per_page: 100,
             });
 
-            const existing = issues.find(i => i.title === title);
+            const existing = issues[0];
 
             const bodyLines = [
               'Automatyczna konserwacja serwera Mikrus nie powiodła się.',
@@ -175,14 +177,12 @@ jobs:
       - name: Close alert issue on success
         if: success()
         uses: actions/github-script@v7
-        env:
-          MIKRUS_HOST: ${{ secrets.MIKRUS_HOST }}
         with:
           script: |
-            const server = process.env.MIKRUS_HOST || 'unknown';
-            const title = `ALERT: Weekly maintenance failed on Mikrus (${server})`;
             const label = 'infra-alert';
 
+            // Match by label alone — see note in the failure step about
+            // why an exact-title match breaks when the host changes.
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -191,7 +191,7 @@ jobs:
               per_page: 100,
             });
 
-            const existing = issues.find(i => i.title === title);
+            const existing = issues[0];
             if (!existing) {
               core.info('No open alert issue to close.');
               return;
