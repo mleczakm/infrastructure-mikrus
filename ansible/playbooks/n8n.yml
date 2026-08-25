@@ -1,0 +1,146 @@
+---
+- name: Deploy n8n
+  hosts: mikrus
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Validate required n8n deployment variables
+      ansible.builtin.assert:
+        that:
+          - mikrus_ipv6 is defined
+          - mikrus_ipv6 | length > 0
+          - n8n_encryption_key is defined
+          - n8n_encryption_key | length > 0
+          - cytrus_host is defined
+          - cytrus_host | length > 0
+          - cytrus_api_token is defined
+          - cytrus_api_token | length > 0
+          - cloudflare_api_token is defined
+          - cloudflare_api_token | length > 0
+          - cloudflare_zone_id is defined
+          - cloudflare_zone_id | length > 0
+        fail_msg: Required n8n, Mikrus, Cytrus, or Cloudflare variables are missing.
+
+  tasks:
+    - name: Ensure n8n data and backup directories exist
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ n8n_data_dir }}", owner: "1000", group: "1000", mode: "0700" }
+        - { path: "{{ n8n_backup_dir }}", owner: "root", group: "root", mode: "0700" }
+
+    - name: Ensure n8n image is available
+      community.docker.docker_image:
+        name: "{{ n8n_image }}"
+        source: pull
+        force_source: false
+
+    - name: Run standalone n8n container
+      community.docker.docker_container:
+        name: "{{ n8n_name }}"
+        image: "{{ n8n_image }}"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "[{{ mikrus_ipv6 }}]:{{ n8n_port }}:5678"
+        volumes:
+          - "{{ n8n_data_dir }}:/home/node/.n8n"
+        env:
+          N8N_HOST: "{{ n8n_domain }}"
+          N8N_PROTOCOL: https
+          N8N_PORT: "5678"
+          N8N_PROXY_HOPS: "1"
+          N8N_ENCRYPTION_KEY: "{{ n8n_encryption_key }}"
+          NODES_EXCLUDE: '["n8n-nodes-base.localFileTrigger"]'
+          WEBHOOK_URL: "https://{{ n8n_domain }}/"
+          N8N_EDITOR_BASE_URL: "https://{{ n8n_domain }}/"
+          GENERIC_TIMEZONE: Europe/Warsaw
+          TZ: Europe/Warsaw
+      no_log: true
+
+    - name: Get Cloudflare DNS record for n8n
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records?type=A&name={{ n8n_domain }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ cloudflare_api_token }}"
+          Content-Type: application/json
+      register: n8n_cloudflare_records
+      delegate_to: localhost
+      no_log: true
+
+    - name: Create Cloudflare DNS record for n8n
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ cloudflare_api_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          type: A
+          name: "{{ n8n_domain }}"
+          content: "{{ cytrus_host }}"
+          ttl: 1
+          proxied: true
+        status_code: 200
+      when: n8n_cloudflare_records.json.result | length == 0
+      delegate_to: localhost
+      no_log: true
+
+    - name: Update Cloudflare DNS record for n8n
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ n8n_cloudflare_records.json.result[0].id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ cloudflare_api_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          type: A
+          name: "{{ n8n_domain }}"
+          content: "{{ cytrus_host }}"
+          ttl: 1
+          proxied: true
+        status_code: 200
+      when: >-
+        n8n_cloudflare_records.json.result | length > 0 and
+        (n8n_cloudflare_records.json.result[0].content != cytrus_host or
+         not n8n_cloudflare_records.json.result[0].proxied)
+      delegate_to: localhost
+      no_log: true
+
+    - name: Get domains configured in Cytrus
+      ansible.builtin.uri:
+        url: https://api.mikr.us/domain
+        method: POST
+        body_format: form-urlencoded
+        body:
+          srv: "{{ ansible_host | regex_replace('\\..*', '') }}"
+          key: "{{ cytrus_api_token }}"
+        status_code: 200
+      register: n8n_cytrus_domains
+      delegate_to: localhost
+      no_log: true
+
+    - name: Verify n8n domain is configured in Cytrus
+      ansible.builtin.assert:
+        that:
+          - n8n_domain in (n8n_cytrus_domains.json | map(attribute='name') | list)
+        fail_msg: "Domain {{ n8n_domain }} is not configured in Cytrus."
+
+    - name: Wait for n8n health endpoint
+      ansible.builtin.uri:
+        url: "http://[{{ mikrus_ipv6 }}]:{{ n8n_port }}/healthz"
+        status_code: 200
+      register: n8n_health
+      retries: 12
+      delay: 5
+      until: n8n_health.status == 200

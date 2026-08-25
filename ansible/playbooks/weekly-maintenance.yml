@@ -3,6 +3,8 @@
   hosts: mikrus
   become: true
   gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
 
   vars:
     maintenance_log: "/var/log/mikrus-maintenance.log"
@@ -10,6 +12,17 @@
     log_retention_days: 30
     target_alpine_version: "3.23"
     auto_upgrade_alpine: true
+
+  pre_tasks:
+    - name: Validate n8n maintenance variables
+      ansible.builtin.assert:
+        that:
+          - mikrus_ipv6 is defined
+          - mikrus_ipv6 | length > 0
+          - n8n_encryption_key is defined
+          - n8n_encryption_key | length > 0
+        fail_msg: MIKRUS_IPV6 and N8N_ENCRYPTION_KEY are required for n8n maintenance.
+      tags: [n8n]
 
   tasks:
     - name: Create maintenance log entry
@@ -344,6 +357,129 @@
         path: "{{ maintenance_log }}"
         line: "{{ ansible_facts['date_time']['iso8601'] }} - System update: {{ apk_upgrade.changed | ternary('Packages upgraded', 'No updates available') }}"
       tags: [maintenance, system]
+
+    # -------------------------
+    # n8n backup and update
+    # -------------------------
+    - name: Ensure SQLite and n8n backup directory are available
+      block:
+        - name: Install SQLite
+          community.general.apk:
+            name: sqlite
+            state: present
+
+        - name: Create n8n backup directory
+          ansible.builtin.file:
+            path: "{{ n8n_backup_dir }}/pre-update"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+      tags: [n8n]
+
+    - name: Check for n8n SQLite database
+      ansible.builtin.stat:
+        path: "{{ n8n_data_dir }}/database.sqlite"
+      register: n8n_database
+      tags: [n8n]
+
+    - name: Create and verify transactionally consistent n8n backup
+      when: n8n_database.stat.exists
+      block:
+        - name: Create n8n SQLite online backup
+          ansible.builtin.command:
+            argv:
+              - sqlite3
+              - "{{ n8n_data_dir }}/database.sqlite"
+              - ".backup {{ n8n_backup_dir }}/pre-update/database-{{ ansible_facts['date_time']['epoch'] }}.sqlite"
+          register: n8n_sqlite_backup
+          changed_when: true
+
+        - name: Verify n8n SQLite backup integrity
+          ansible.builtin.command:
+            argv:
+              - sqlite3
+              - "{{ n8n_backup_dir }}/pre-update/database-{{ ansible_facts['date_time']['epoch'] }}.sqlite"
+              - PRAGMA integrity_check;
+          register: n8n_backup_integrity
+          changed_when: false
+          failed_when: n8n_backup_integrity.stdout | trim != 'ok'
+      tags: [n8n]
+
+    - name: Read current local n8n image ID
+      ansible.builtin.command:
+        argv: [docker, image, inspect, --format, "{{ '{{.Id}}' }}", "{{ n8n_image }}"]
+      register: n8n_image_before
+      changed_when: false
+      failed_when: false
+      tags: [n8n]
+
+    - name: Pull current stable n8n image
+      ansible.builtin.command:
+        argv: [docker, pull, "{{ n8n_image }}"]
+      register: n8n_pull
+      changed_when: "'Downloaded newer image' in n8n_pull.stdout"
+      tags: [n8n]
+
+    - name: Read updated local n8n image ID
+      ansible.builtin.command:
+        argv: [docker, image, inspect, --format, "{{ '{{.Id}}' }}", "{{ n8n_image }}"]
+      register: n8n_image_after
+      changed_when: false
+      tags: [n8n]
+
+    - name: Recreate n8n only when stable image changed
+      community.docker.docker_container:
+        name: "{{ n8n_name }}"
+        image: "{{ n8n_image }}"
+        state: started
+        restart_policy: always
+        recreate: true
+        published_ports:
+          - "[{{ mikrus_ipv6 }}]:{{ n8n_port }}:5678"
+        volumes:
+          - "{{ n8n_data_dir }}:/home/node/.n8n"
+        env:
+          N8N_HOST: "{{ n8n_domain }}"
+          N8N_PROTOCOL: https
+          N8N_PORT: "5678"
+          N8N_PROXY_HOPS: "1"
+          N8N_ENCRYPTION_KEY: "{{ n8n_encryption_key }}"
+          NODES_EXCLUDE: '["n8n-nodes-base.localFileTrigger"]'
+          WEBHOOK_URL: "https://{{ n8n_domain }}/"
+          N8N_EDITOR_BASE_URL: "https://{{ n8n_domain }}/"
+          GENERIC_TIMEZONE: Europe/Warsaw
+          TZ: Europe/Warsaw
+      when: n8n_image_before.stdout | default('') != n8n_image_after.stdout
+      no_log: true
+      tags: [n8n]
+
+    - name: Verify n8n health after update check
+      ansible.builtin.uri:
+        url: "http://[{{ mikrus_ipv6 }}]:{{ n8n_port }}/healthz"
+        status_code: 200
+      register: n8n_health
+      retries: 12
+      delay: 5
+      until: n8n_health.status == 200
+      tags: [n8n]
+
+    - name: Remove n8n pre-update backups older than 14 days
+      ansible.builtin.find:
+        paths: "{{ n8n_backup_dir }}/pre-update"
+        patterns: database-*.sqlite
+        age: 14d
+      register: old_n8n_backups
+      tags: [n8n]
+
+    - name: Delete old n8n pre-update backups
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_n8n_backups.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+      tags: [n8n]
 
     # -------------------------
     # Docker Cleanup

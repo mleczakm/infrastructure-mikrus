@@ -23,7 +23,7 @@ on:
 
 jobs:
   weekly-maintenance:
-    environment: stage
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -57,7 +57,7 @@ jobs:
       - name: Run weekly maintenance with Ansible
         run: |
           # Set tags based on workflow inputs
-          TAGS="maintenance"
+          TAGS="maintenance,n8n"
           EXTRA_VARS=""
           
           if [ "${{ github.event.inputs.skip_updates }}" = "true" ]; then
@@ -86,6 +86,8 @@ jobs:
             -e "ansible_host=${{ secrets.MIKRUS_HOST }}" \
             -e "ansible_port=${{ secrets.MIKRUS_PORT }}" \
             -e "ansible_user=root" \
+            -e "mikrus_ipv6=${{ secrets.MIKRUS_IPV6 }}" \
+            -e "n8n_encryption_key=${{ secrets.N8N_ENCRYPTION_KEY }}" \
             $EXTRA_VARS \
             --tags "$TAGS" \
             -v
@@ -126,7 +128,9 @@ jobs:
             const label = 'infra-alert';
             const now = new Date().toISOString();
 
-            // Find existing open issue with label and same title
+            // Match by label alone (not title) — the host in the title
+            // can change if the server moves, so an exact-title match
+            // would miss an older open issue and create a duplicate.
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -135,7 +139,7 @@ jobs:
               per_page: 100,
             });
 
-            const existing = issues.find(i => i.title === title);
+            const existing = issues[0];
 
             const bodyLines = [
               'Automatyczna konserwacja serwera Mikrus nie powiodła się.',
@@ -169,6 +173,44 @@ jobs:
               });
               core.info(`Created issue: #${issue.number}`);
             }
+
+      - name: Close alert issue on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = 'infra-alert';
+
+            // Match by label alone — see note in the failure step about
+            // why an exact-title match breaks when the host changes.
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            });
+
+            const existing = issues[0];
+            if (!existing) {
+              core.info('No open alert issue to close.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body: `Konserwacja zakończona sukcesem.\n\nWorkflow run: ${context.payload.repository.html_url}/actions/runs/${context.runId}`,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+            core.info(`Closed issue #${existing.number}`);
 
       - name: Success notification
         if: success()
