@@ -101,6 +101,14 @@ services:
     volumes:
       - ~/.n8n:/home/node/.n8n
 
+  egib-parser:
+    build:
+      dockerfile: services/egib-parser/Dockerfile
+      context: .
+    restart: unless-stopped
+    networks:
+      mikrus:
+
   kiddo:
     image: $KIDDO_IMAGE
     restart: unless-stopped

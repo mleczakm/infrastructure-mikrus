@@ -1,0 +1,39 @@
+name: Deploy EGiB parser
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    environment: Stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Ansible dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          ansible-galaxy collection install -r ansible-collections-requirements.yml
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.MIKRUS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "${{ secrets.MIKRUS_PORT }}" "${{ secrets.MIKRUS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy egib-parser
+        run: |
+          ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/deploy-egib-parser.yml \
+            -e "ansible_host=${{ secrets.MIKRUS_HOST }}" \
+            -e "ansible_port=${{ secrets.MIKRUS_PORT }}"
