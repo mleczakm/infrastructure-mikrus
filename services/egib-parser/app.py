@@ -1,3 +1,5 @@
+import hmac
+import os
 import shutil
 import subprocess
 import sys
@@ -10,6 +12,7 @@ from fastapi.responses import JSONResponse, Response
 EXTRACTOR = Path(__file__).parent / "egib_extractor.py"
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 SUBPROCESS_TIMEOUT_SECONDS = 150
+API_KEY = os.environ.get("EGIB_PARSER_API_KEY", "")
 
 app = FastAPI()
 
@@ -21,6 +24,9 @@ def health():
 
 @app.post("/process")
 async def process(request: Request, background_tasks: BackgroundTasks):
+    if not API_KEY or not hmac.compare_digest(request.headers.get("x-api-key", ""), API_KEY):
+        return JSONResponse(status_code=401, content={"error": {"message": "Unauthorized"}})
+
     body = await request.body()
     if not body:
         return JSONResponse(status_code=400, content={"error": {"message": "Empty request body"}})

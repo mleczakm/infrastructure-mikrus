@@ -30,3 +30,9 @@ n8n_image: docker.n8n.io/n8nio/n8n:stable
 n8n_port: 8082
 n8n_data_dir: /var/lib/n8n
 n8n_backup_dir: /var/lib/n8n-backups
+
+# egib-parser (viaambra EGiB document automation, called by the n8n workflow)
+egib_parser_name: egib-parser
+egib_parser_image: egib-parser:latest
+egib_parser_port: 8091
+egib_parser_src_dir: /opt/apps/services/egib-parser

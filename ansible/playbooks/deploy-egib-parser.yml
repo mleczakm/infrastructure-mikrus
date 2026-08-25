@@ -1,65 +1,60 @@
 ---
 - name: Deploy EGiB parser microservice
   hosts: mikrus
+  become: true
   gather_facts: false
-  vars:
-    deploy_dir: /opt/apps
-    network_name: mikrus
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Validate required egib-parser deployment variables
+      ansible.builtin.assert:
+        that:
+          - mikrus_ipv6 is defined
+          - mikrus_ipv6 | length > 0
+          - egib_parser_api_key is defined
+          - egib_parser_api_key | length > 0
+        fail_msg: Required egib-parser variables are missing.
 
   tasks:
-    - name: Ensure deployment directory exists
+    - name: Ensure egib-parser source directory exists
       ansible.builtin.file:
-        path: "{{ deploy_dir }}"
+        path: "{{ egib_parser_src_dir }}"
         state: directory
         mode: "0755"
-
-    - name: Copy Compose definition
-      ansible.builtin.copy:
-        src: ../../compose.yaml
-        dest: "{{ deploy_dir }}/compose.yaml"
-        mode: "0644"
 
     - name: Copy egib-parser service source
       ansible.builtin.copy:
         src: ../../services/egib-parser/
-        dest: "{{ deploy_dir }}/services/egib-parser/"
+        dest: "{{ egib_parser_src_dir }}/"
         mode: "0644"
 
-    - name: Ensure the shared Docker network exists
-      community.docker.docker_network:
-        name: "{{ network_name }}"
-        state: present
-
     - name: Build the egib-parser image
-      ansible.builtin.command:
-        cmd: docker compose build egib-parser
-        chdir: "{{ deploy_dir }}"
-      environment:
-        N8N_ENCRYPTION_KEY: unused
-        KIDDO_IMAGE: unused
-      changed_when: true
+      community.docker.docker_image:
+        name: "{{ egib_parser_image }}"
+        build:
+          path: "{{ egib_parser_src_dir }}"
+        source: build
+        force_source: true
 
-    - name: Start egib-parser
-      ansible.builtin.command:
-        cmd: docker compose up -d --no-deps egib-parser
-        chdir: "{{ deploy_dir }}"
-      environment:
-        N8N_ENCRYPTION_KEY: unused
-        KIDDO_IMAGE: unused
-      changed_when: true
+    - name: Run egib-parser container
+      community.docker.docker_container:
+        name: "{{ egib_parser_name }}"
+        image: "{{ egib_parser_image }}"
+        state: started
+        restart_policy: always
+        recreate: true
+        published_ports:
+          - "[{{ mikrus_ipv6 }}]:{{ egib_parser_port }}:8000"
+        env:
+          EGIB_PARSER_API_KEY: "{{ egib_parser_api_key }}"
+      no_log: true
 
-    - name: Wait for egib-parser health check
-      ansible.builtin.command:
-        cmd: docker compose exec -T egib-parser python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
-        chdir: "{{ deploy_dir }}"
-      register: egib_health
+    - name: Wait for egib-parser health endpoint
+      ansible.builtin.uri:
+        url: "http://[{{ mikrus_ipv6 }}]:{{ egib_parser_port }}/health"
+        status_code: 200
+      register: egib_parser_health
       retries: 20
       delay: 3
-      until: egib_health.rc == 0
-      changed_when: false
-
-    - name: Show egib-parser container status
-      ansible.builtin.command:
-        cmd: docker compose ps egib-parser
-        chdir: "{{ deploy_dir }}"
-      changed_when: false
+      until: egib_parser_health.status == 200
