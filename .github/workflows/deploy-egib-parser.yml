@@ -37,5 +37,4 @@ jobs:
           ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/deploy-egib-parser.yml \
             -e "ansible_host=${{ secrets.MIKRUS_HOST }}" \
             -e "ansible_port=${{ secrets.MIKRUS_PORT }}" \
-            -e "mikrus_ipv6=${{ secrets.MIKRUS_IPV6 }}" \
             -e "egib_parser_api_key=${{ secrets.EGIB_PARSER_API_KEY }}"

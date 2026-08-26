@@ -10,8 +10,6 @@
     - name: Validate required egib-parser deployment variables
       ansible.builtin.assert:
         that:
-          - mikrus_ipv6 is defined
-          - mikrus_ipv6 | length > 0
           - egib_parser_api_key is defined
           - egib_parser_api_key | length > 0
         fail_msg: Required egib-parser variables are missing.
@@ -37,6 +35,11 @@
         source: build
         force_source: true
 
+    - name: Ensure the internal egib-parser network exists
+      community.docker.docker_network:
+        name: "{{ egib_parser_network }}"
+        state: present
+
     - name: Run egib-parser container
       community.docker.docker_container:
         name: "{{ egib_parser_name }}"
@@ -44,17 +47,23 @@
         state: started
         restart_policy: always
         recreate: true
-        published_ports:
-          - "[{{ mikrus_ipv6 }}]:{{ egib_parser_port }}:8000"
+        networks:
+          - name: "{{ egib_parser_network }}"
         env:
           EGIB_PARSER_API_KEY: "{{ egib_parser_api_key }}"
       no_log: true
 
     - name: Wait for egib-parser health endpoint
-      ansible.builtin.uri:
-        url: "http://[{{ mikrus_ipv6 }}]:{{ egib_parser_port }}/health"
-        status_code: 200
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ egib_parser_name }}"
+          - python
+          - -c
+          - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
       register: egib_parser_health
       retries: 20
       delay: 3
-      until: egib_parser_health.status == 200
+      until: egib_parser_health.rc == 0
+      changed_when: false

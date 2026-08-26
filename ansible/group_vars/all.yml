@@ -34,5 +34,5 @@ n8n_backup_dir: /var/lib/n8n-backups
 # egib-parser (viaambra EGiB document automation, called by the n8n workflow)
 egib_parser_name: egib-parser
 egib_parser_image: egib-parser:latest
-egib_parser_port: 8091
+egib_parser_network: egib-net
 egib_parser_src_dir: /opt/apps/services/egib-parser

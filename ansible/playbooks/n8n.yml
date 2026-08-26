@@ -42,6 +42,11 @@
         source: pull
         force_source: false
 
+    - name: Ensure the internal egib-parser network exists
+      community.docker.docker_network:
+        name: "{{ egib_parser_network }}"
+        state: present
+
     - name: Run standalone n8n container
       community.docker.docker_container:
         name: "{{ n8n_name }}"
@@ -50,6 +55,9 @@
         restart_policy: always
         published_ports:
           - "[{{ mikrus_ipv6 }}]:{{ n8n_port }}:5678"
+        networks:
+          - name: bridge
+          - name: "{{ egib_parser_network }}"
         volumes:
           - "{{ n8n_data_dir }}:/home/node/.n8n"
         env:
